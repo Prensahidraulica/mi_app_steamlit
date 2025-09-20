@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Programa para calcular y representar un rack en ASCII.
+Incluye reglas específicas para Sonos, tapas ciegas, router, switch, cine, subwoofer y ventilación.
+"""
+
+class Elemento:
+    def __init__(self, nombre, altura_u, tipo="generico"):
+        self.nombre = str(nombre)
+        self.altura_u = int(altura_u)
+        self.tipo = tipo  # permite diferenciar "sonos" de otros
+
+def input_int(prompt, allow_empty=False, default=None):
+    while True:
+        try:
+            s = input(prompt)
+        except EOFError:
+            if allow_empty:
+                return default
+            raise
+        if s.strip() == "":
+            if allow_empty:
+                return default
+            print("Por favor introduce un número entero.")
+            continue
+        try:
+            return int(s)
+        except ValueError:
+            print("Entrada no válida. Introduce un número entero.")
+
+def input_yesno(prompt, default='n'):
+    while True:
+        try:
+            s = input(prompt)
+        except EOFError:
+            return default
+        s = s.strip().lower()
+        if s in ('s', 'n'):
+            return s
+        if s == "":
+            return default
+        print("Respuesta no válida. Escribe 's' para sí o 'n'.")
+
+def generar_ascii(elementos, altura_rack):
+    print("\n📐 Diagrama ASCII del rack (arriba → abajo)\n")
+    indice = 0
+    content_width = 25
+    rack = []
+
+    for e in elementos:
+        if e.tipo == "sonos":
+            # Cada bloque de Sonos ocupa 2U
+            linea_superior = f"│ {'*' * (content_width-2)} │"
+            linea_inferior = f"│ {e.nombre.center(content_width-2)} │"
+            rack.append(linea_superior + f"  <- {altura_rack - indice}U")
+            indice += 1
+            rack.append(linea_inferior + f"  <- {altura_rack - indice}U")
+            indice += 1
+
+        elif "Tapa ciega" in e.nombre:
+            rack.append("──────── Tapa ciega (1U) ─────────" + f"  <- {altura_rack - indice}U")
+            indice += 1
+
+        else:
+            for _ in range(e.altura_u):
+                nombre = e.nombre[:content_width-2].center(content_width-2)
+                linea = f"│ {nombre} │"
+                rack.append(linea + f"  <- {altura_rack - indice}U")
+                indice += 1
+
+    print("┌" + "─" * content_width + "┐")
+    for fila in rack:
+        print(fila)
+    print("└" + "─" * content_width + "┘")
+
+def calcular_rack_recomendado(u_total):
+    racks_disponibles = [12, 15, 18, 24, 32, 42, 47]
+    for r in racks_disponibles:
+        if r >= u_total:
+            return r
+    return racks_disponibles[-1]
+
+def configurar_rack():
+    print("=== Configuración del Rack ===")
+    num_sonos = input_int("¿Cuántos Sonos Amp quieres instalar?: ")
+    cine = input_yesno("¿Quieres añadir un amplificador para cine? (s/n): ", default='n')
+    sub = input_yesno("¿Quieres añadir un amplificador para subwoofer? (s/n): ", default='n')
+
+    tomas_red = input_int("¿Cuántas tomas de red hay en la vivienda?: ")
+    puntos_wifi = input_int("¿Cuántos puntos de acceso Wi-Fi hay?: ")
+    videoporteros = input_int("¿Cuántas unidades de videoportero o control de acceso?: ")
+    otras_unidades = input_int("¿Cuántas otras unidades de red adicionales?: ")
+
+    total_puertos_adicionales = tomas_red + puntos_wifi + videoporteros + otras_unidades
+    total_puertos = max(num_sonos, total_puertos_adicionales)
+
+    elementos = []
+    elementos.append(Elemento("Termostato", 1))
+
+    # Bloques Sonos
+    i = 0
+    while i < num_sonos:
+        if i + 1 < num_sonos:
+            elementos.append(Elemento("Sonos Amp + Sonos Amp", 2, tipo="sonos"))
+            i += 2
+        else:
+            elementos.append(Elemento("Sonos Amp", 2, tipo="sonos"))
+            i += 1
+        if i < num_sonos:
+            elementos.append(Elemento("Tapa ciega entre Sonos", 1))
+
+    if num_sonos > 0:
+        elementos.append(Elemento("Tapa ciega final Sonos", 1))
+
+    # Amplificador cine
+    if cine == 's':
+        elementos.append(Elemento("Amplificador Cine", 6))
+        elementos.append(Elemento("Tapa ciega Cine", 1))
+
+    # Balda de reserva
+    elementos.append(Elemento("Balda de Reserva", 2))
+
+    # Router + escobilla
+    elementos.append(Elemento("Router", 1))
+    elementos.append(Elemento("Escobilla Router", 1))
+
+    # Switch + escobillas
+    restantes = total_puertos
+    switch_num = 1
+    while restantes > 0:
+        if restantes <= 16:
+            puertos = 16
+        elif restantes <= 24:
+            puertos = 24
+        else:
+            puertos = 48
+        elementos.append(Elemento(f"Switch {switch_num} ({puertos}p)", 1))
+        elementos.append(Elemento(f"Escobilla Switch {switch_num}", 1))
+        restantes -= puertos
+        switch_num += 1
+
+    # Patch Panel + escobilla
+    elementos.append(Elemento("Patch Panel", 1))
+    elementos.append(Elemento("Escobilla Patch Panel", 1))
+
+    # Subwoofer
+    if sub == 's':
+        elementos.append(Elemento("Amplificador Subwoofer", 2))
+        elementos.append(Elemento("Tapa ciega Sub", 1))
+
+    # Calcular total
+    u_total = sum(e.altura_u for e in elementos)
+    rack_recomendado = calcular_rack_recomendado(u_total)
+
+    # Ventilador intermedio
+    if rack_recomendado > 32 and cine == 's':
+        for idx, e in enumerate(elementos):
+            if e.nombre == "Amplificador Cine":
+                elementos.insert(idx, Elemento("Ventilador Intermedio", 1))
+                u_total += 1
+                rack_recomendado = calcular_rack_recomendado(u_total)
+                break
+
+    print(f"\nTotal U necesarias: {u_total}U")
+    print(f"Rack recomendado: {rack_recomendado}U")
+
+    generar_ascii(elementos, altura_rack=rack_recomendado)
+
+if __name__ == "__main__":
+    configurar_rack()
